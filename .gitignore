@@ -17,3 +17,7 @@ wandb/
 __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
+
+# 참고용 이미지, 텍스트
+*.png
+*.txt
