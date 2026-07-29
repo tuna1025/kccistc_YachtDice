@@ -1,5 +1,6 @@
 # Roboflow dataset files (images and YOLO labels)
 Dice.v2-medium-color.yolov11/export/
+yolo-dice.v9i.yolov11/
 
 # Files generated when preparing and training the model
 dataset_splits/
