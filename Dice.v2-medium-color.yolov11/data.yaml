@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 6
+names: ['1', '2', '3', '4', '5', '6']
+
+roboflow:
+  workspace: roboflow-gw7yv
+  project: dice
+  version: 2
+  license: Public Domain
+  url: https://universe.roboflow.com/roboflow-gw7yv/dice/dataset/2
