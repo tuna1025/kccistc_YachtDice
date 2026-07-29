@@ -1,4 +1,7 @@
 # dice_ui.py
+import math
+import time
+
 import cv2
 import numpy as np
 
@@ -10,19 +13,25 @@ CAM_HEIGHT = int(WINDOW_HEIGHT * 0.25)
 DICE_ZONE_HEIGHT = int(WINDOW_HEIGHT * 0.16)
 SCORE_BOARD_HEIGHT = WINDOW_HEIGHT - CAM_HEIGHT - DICE_ZONE_HEIGHT
 
-# BGR 컬러 팔레트 (모던하고 부드러운 테마)
+
 BG_COLOR = (248, 249, 250)
 CARD_BG = (255, 255, 255)
-SHADOW_COLOR = (220, 220, 220)
-GRID_LINE_COLOR = (235, 235, 235)
-BOLD_BORDER_COLOR = (50, 50, 50)
+SHADOW_COLOR = (190, 190, 190)
+GRID_LINE_COLOR = (190, 204, 188)
+BOLD_BORDER_COLOR = (55, 155, 205)
 SPECIAL_ROW_BG = (225, 228, 232)  # Subtotal/Total 배경색
-ACTIVE_P2_BG = (220, 240, 255)
-TEXT_MAIN = (20, 20, 20)
+ACTIVE_P2_BG = (205, 235, 245)
+TEXT_MAIN = (24, 30, 22)
 TEXT_LIGHT = (20, 20, 20) # Special row 텍스트 색상 (어두운 배경에 흰색 대신)
-TEXT_MUTED = (140, 140, 140)
-ROW_ALT_COLOR = (247, 248, 249)
-HOVER_BUTTON_BG = (215, 235, 255)
+TEXT_MUTED = (145, 153, 142)
+ROW_ALT_COLOR = (237, 243, 235)
+HOVER_BUTTON_BG = (175, 225, 242)
+CASINO_GOLD = (55, 185, 235)
+CASINO_GREEN_DARK = (28, 65, 18)
+CASINO_SPECIAL_BG = (193, 225, 238)
+DICE_FACE_COLOR = (235, 244, 251)
+RESTART_BUTTON_RECT = (115, 535, 385, 585)
+QUIT_BUTTON_RECT = (115, 600, 385, 650)
 
 SCORE_ROW_HEIGHT = 30
 SCORE_HEADER_HEIGHT = 55
@@ -38,7 +47,7 @@ SCORING_CATEGORIES = [
 SCORING_KEYS = {item[1] for item in SCORING_CATEGORIES if len(item) == 2}
 UPPER_SCORING_KEYS = {'ones', 'twos', 'threes', 'fours', 'fives', 'sixes'}
 
-def draw_rounded_rect(img, pt1, pt2, color, radius=10, thickness=-1, corners=[True, True, True, True]):
+def _legacy_draw_rounded_rect(img, pt1, pt2, color, radius=10, thickness=-1, corners=[True, True, True, True]):
     """모서리가 둥근 사각형을 그립니다. corners: [TL, TR, BL, BR]"""
     x1, y1 = pt1
     x2, y2 = pt2
@@ -89,25 +98,90 @@ def draw_rounded_rect(img, pt1, pt2, color, radius=10, thickness=-1, corners=[Tr
         elif br: cv2.line(img, (x2, y1), (x2, y2-radius), color, thickness)
         else: cv2.line(img, (x2, y1), (x2, y2), color, thickness)
 
+
+def draw_rounded_rect(img, pt1, pt2, color, radius=10, thickness=-1,
+                      corners=(True, True, True, True)):
+    """Draw a rounded rectangle using quarter arcs rather than full border circles."""
+    x1, y1 = pt1
+    x2, y2 = pt2
+    if x1 > x2:
+        x1, x2 = x2, x1
+    if y1 > y2:
+        y1, y2 = y2, y1
+    radius = max(0, min(radius, (x2 - x1) // 2, (y2 - y1) // 2))
+    if radius == 0:
+        cv2.rectangle(img, (x1, y1), (x2, y2), color, thickness)
+        return
+
+    tl, tr, bl, br = corners
+    if thickness == -1:
+        cv2.rectangle(img, (x1 + radius, y1), (x2 - radius, y2), color, -1)
+        cv2.rectangle(img, (x1, y1 + radius), (x2, y2 - radius), color, -1)
+        for enabled, center in (
+            (tl, (x1 + radius, y1 + radius)),
+            (tr, (x2 - radius, y1 + radius)),
+            (bl, (x1 + radius, y2 - radius)),
+            (br, (x2 - radius, y2 - radius)),
+        ):
+            if enabled:
+                cv2.circle(img, center, radius, color, -1, cv2.LINE_AA)
+        if not tl:
+            cv2.rectangle(img, (x1, y1), (x1 + radius, y1 + radius), color, -1)
+        if not tr:
+            cv2.rectangle(img, (x2 - radius, y1), (x2, y1 + radius), color, -1)
+        if not bl:
+            cv2.rectangle(img, (x1, y2 - radius), (x1 + radius, y2), color, -1)
+        if not br:
+            cv2.rectangle(img, (x2 - radius, y2 - radius), (x2, y2), color, -1)
+        return
+
+    cv2.line(img, (x1 + (radius if tl else 0), y1),
+             (x2 - (radius if tr else 0), y1), color, thickness, cv2.LINE_AA)
+    cv2.line(img, (x1 + (radius if bl else 0), y2),
+             (x2 - (radius if br else 0), y2), color, thickness, cv2.LINE_AA)
+    cv2.line(img, (x1, y1 + (radius if tl else 0)),
+             (x1, y2 - (radius if bl else 0)), color, thickness, cv2.LINE_AA)
+    cv2.line(img, (x2, y1 + (radius if tr else 0)),
+             (x2, y2 - (radius if br else 0)), color, thickness, cv2.LINE_AA)
+    if tl:
+        cv2.ellipse(img, (x1 + radius, y1 + radius), (radius, radius), 0, 180, 270,
+                    color, thickness, cv2.LINE_AA)
+    if tr:
+        cv2.ellipse(img, (x2 - radius, y1 + radius), (radius, radius), 0, 270, 360,
+                    color, thickness, cv2.LINE_AA)
+    if bl:
+        cv2.ellipse(img, (x1 + radius, y2 - radius), (radius, radius), 0, 90, 180,
+                    color, thickness, cv2.LINE_AA)
+    if br:
+        cv2.ellipse(img, (x2 - radius, y2 - radius), (radius, radius), 0, 0, 90,
+                    color, thickness, cv2.LINE_AA)
+
 def draw_dice(img, number, x, y, size=60):
-    """모던하고 깔끔한 디자인의 주사위를 그립니다."""
-    
+
     if size > 25: # 큰 주사위에만 그림자 적용
         shadow_offset = 5
-        cv2.rectangle(img, (x + shadow_offset, y + shadow_offset),
-                      (x + size + shadow_offset, y + size + shadow_offset), (185, 190, 198), -1)
+        radius = max(7, size // 6)
+        shadow_layer = img.copy()
+        draw_rounded_rect(shadow_layer, (x + shadow_offset, y + shadow_offset),
+                          (x + size + shadow_offset, y + size + shadow_offset),
+                          SHADOW_COLOR, radius=radius, thickness=-1)
+        cv2.addWeighted(shadow_layer, 0.28, img, 0.72, 0, img)
     
     is_compact = size <= 25
-    dice_bg = (20, 20, 20) if is_compact else (76, 54, 37)
-    border_color = (5, 5, 5) if is_compact else (45, 32, 23)
-    cv2.rectangle(img, (x, y), (x + size, y + size), dice_bg, -1)
-    cv2.rectangle(img, (x, y), (x + size, y + size), border_color, 2 if not is_compact else 1)
-    if not is_compact:
-        cv2.line(img, (x + 3, y + 3), (x + size - 3, y + 3), (120, 95, 70), 1)
+    dice_bg = (20, 20, 20) if is_compact else DICE_FACE_COLOR
+    border_color = (5, 5, 5) if is_compact else (45, 45, 45)
+    if is_compact:
+        cv2.rectangle(img, (x, y), (x + size, y + size), dice_bg, -1)
+        cv2.rectangle(img, (x, y), (x + size, y + size), border_color, 1)
+    else:
+        draw_rounded_rect(img, (x, y), (x + size, y + size), dice_bg,
+                          radius=radius, thickness=-1)
+        draw_rounded_rect(img, (x, y), (x + size, y + size), border_color,
+                          radius=radius, thickness=2)
 
     dot_r = max(3, size // 9)
     cx, cy = x + size // 2, y + size // 2
-    dot_color = (255, 255, 255)
+    dot_color = (255, 255, 255) if is_compact else (25, 25, 25)
     
     positions = {
         1: [(cx, cy)], 2: [(x + size//4, y + size//4), (x + 3*size//4, y + 3*size//4)],
@@ -180,8 +254,203 @@ def get_score_button_at(mouse_x, mouse_y):
     return (player, key) if key in SCORING_KEYS else None
 
 
+def get_game_over_button_at(mouse_x, mouse_y):
+    """Return restart/quit for a final-screen button under the mouse."""
+    rx1, ry1, rx2, ry2 = RESTART_BUTTON_RECT
+    qx1, qy1, qx2, qy2 = QUIT_BUTTON_RECT
+    if rx1 <= mouse_x <= rx2 and ry1 <= mouse_y <= ry2:
+        return 'restart'
+    if qx1 <= mouse_x <= qx2 and qy1 <= mouse_y <= qy2:
+        return 'quit'
+    return None
+
+
+def _score_cell_rect(player, key):
+    """Return a scoring cell rectangle in full-screen coordinates."""
+    row_index = next(i for i, item in enumerate(SCORING_CATEGORIES) if item[1] == key)
+    bx1, bx2 = 15, WINDOW_WIDTH - 15
+    col_width = (bx2 - bx1) // 3
+    x1 = bx1 + (col_width * player)
+    x2 = bx1 + (col_width * (player + 1)) if player == 1 else bx2
+    score_top = CAM_HEIGHT + DICE_ZONE_HEIGHT
+    y1 = score_top + 15 + SCORE_HEADER_HEIGHT + row_index * SCORE_ROW_HEIGHT
+    return x1, y1, x2, y1 + SCORE_ROW_HEIGHT
+
+
+def _blend_overlay(img, painter, alpha):
+    """Paint onto a copy and alpha-blend it over img."""
+    overlay = img.copy()
+    painter(overlay)
+    cv2.addWeighted(overlay, max(0.0, min(1.0, alpha)), img,
+                    1.0 - max(0.0, min(1.0, alpha)), 0, img)
+
+
+def _draw_text_echoes(img, text, center, base_scale, progress, color):
+    """Expand one stationary translucent text after-image with fast-to-slow easing."""
+    if progress < 0.06:
+        return
+    echo_progress = min(1.0, (progress - 0.06) / 0.78)
+    eased = 1.0 - (1.0 - echo_progress) ** 3
+    cx, cy = center
+    echo_scale = base_scale + 0.18 + 0.82 * eased
+    (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_DUPLEX, echo_scale, 2)
+
+    def paint_echoes(overlay):
+        cv2.putText(overlay, text, (cx - tw // 2, cy + th // 2),
+                    cv2.FONT_HERSHEY_DUPLEX, echo_scale, color, 2, cv2.LINE_AA)
+
+    _blend_overlay(img, paint_echoes, 0.38 * (1.0 - echo_progress))
+
+
+def _draw_score_effect(img, effect, elapsed, active_player):
+    progress = min(1.0, elapsed / 0.9)
+    x1, y1, x2, y2 = _score_cell_rect(effect['player'], effect['key'])
+    cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+
+    # Start large above the cell, then quickly land at the exact final text position.
+    impact_duration = 0.20
+    impact_progress = min(1.0, elapsed / impact_duration)
+    landing = 1.0 - (1.0 - impact_progress) ** 3
+    scale = 1.05 + (0.55 - 1.05) * landing
+    cell_bg = ACTIVE_P2_BG if effect['player'] == active_player else CARD_BG
+    cv2.rectangle(img, (cx - 38, y1 + 2), (cx + 38, y2 - 2), cell_bg, -1)
+    text = str(effect['score'])
+    _draw_text_echoes(img, text, (cx, cy), 0.55, progress, CASINO_GOLD)
+    (tw, _), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_DUPLEX, scale, 2)
+    # This is deliberately identical to the normal locked-score alignment below.
+    normal_col_width = (WINDOW_WIDTH - 30) // 3
+    final_x = x1 + (normal_col_width - tw) // 2
+    final_baseline_y = y1 + 22
+    impact_baseline_y = int(final_baseline_y - 12 * (1.0 - landing))
+    cv2.putText(img, text, (final_x, impact_baseline_y),
+                cv2.FONT_HERSHEY_DUPLEX, scale, TEXT_MAIN, 2, cv2.LINE_AA)
+
+
+def _draw_yacht_effect(img, elapsed):
+    duration = 2.6
+    progress = min(1.0, elapsed / duration)
+    target_y = WINDOW_HEIGHT // 2 + 20
+    hidden_y = WINDOW_HEIGHT + 90
+    if progress < 0.28:
+        q = progress / 0.28
+        ease_in = q ** 3  # Slow start, then accelerating upward.
+        baseline_y = int(hidden_y + (target_y - hidden_y) * ease_in)
+        strength = ease_in
+    elif progress < 0.72:
+        q = (progress - 0.28) / 0.44
+        baseline_y = target_y - int(math.sin(q * math.pi * 2) * 5)
+        strength = 1.0
+    else:
+        q = (progress - 0.72) / 0.28
+        baseline_y = int(target_y + (hidden_y - target_y) * q ** 3)
+        strength = 1.0 - q
+
+    def paint_banner(overlay):
+        cv2.rectangle(overlay, (0, baseline_y - 70), (WINDOW_WIDTH, baseline_y + 25),
+                      CASINO_GREEN_DARK, -1)
+        cv2.line(overlay, (0, baseline_y - 70), (WINDOW_WIDTH, baseline_y - 70), CASINO_GOLD, 3)
+        cv2.line(overlay, (0, baseline_y + 25), (WINDOW_WIDTH, baseline_y + 25), CASINO_GOLD, 3)
+
+    _blend_overlay(img, paint_banner, 0.78 * strength)
+    text = "Yacht!"
+    scale = 2.0 + 0.15 * math.sin(progress * math.pi * 6)
+    (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_DUPLEX, scale, 4)
+    tx = (WINDOW_WIDTH - tw) // 2
+    cv2.putText(img, text, (tx + 3, baseline_y + 3), cv2.FONT_HERSHEY_DUPLEX,
+                scale, (10, 35, 10), 6, cv2.LINE_AA)
+    cv2.putText(img, text, (tx, baseline_y), cv2.FONT_HERSHEY_DUPLEX,
+                scale, CASINO_GOLD, 4, cv2.LINE_AA)
+
+
+def _draw_bonus_effect(img, elapsed):
+    progress = min(1.0, elapsed / 2.2)
+    cx = WINDOW_WIDTH // 2
+    bonus_row = next(i for i, item in enumerate(SCORING_CATEGORIES) if item[1] == 'bonus')
+    base_y = CAM_HEIGHT + DICE_ZONE_HEIGHT + 15 + SCORE_HEADER_HEIGHT + bonus_row * SCORE_ROW_HEIGHT
+    cy = base_y + SCORE_ROW_HEIGHT // 2
+    text = "+35 BONUS!"
+    # Same impact motion as score confirmation, without rays or a sunburst.
+    if progress < 0.16:
+        scale = 1.45 - 0.45 * (progress / 0.16)
+    elif progress < 0.34:
+        settle = (progress - 0.16) / 0.18
+        scale = 0.92 + 0.08 * settle
+    else:
+        scale = 1.0
+
+    _draw_text_echoes(img, text, (cx, cy), 1.0, progress, CASINO_GOLD)
+    (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_DUPLEX, scale, 2)
+    cv2.putText(img, text, (cx - tw // 2 + 2, cy + th // 2 + 2),
+                cv2.FONT_HERSHEY_DUPLEX, scale, CASINO_GREEN_DARK, 4, cv2.LINE_AA)
+    cv2.putText(img, text, (cx - tw // 2, cy + th // 2),
+                cv2.FONT_HERSHEY_DUPLEX, scale, CASINO_GOLD, 2, cv2.LINE_AA)
+
+
+def draw_effects(img, effects, animation_time, active_player):
+    """Draw all non-blocking celebration effects for the current frame."""
+    for effect in effects or []:
+        elapsed = max(0.0, animation_time - effect['started_at'])
+        if effect['type'] == 'score' and elapsed < 0.9:
+            _draw_score_effect(img, effect, elapsed, active_player)
+        elif effect['type'] == 'yacht' and elapsed < 2.6:
+            _draw_yacht_effect(img, elapsed)
+        elif effect['type'] == 'bonus' and elapsed < 2.2:
+            _draw_bonus_effect(img, elapsed)
+
+
+def draw_game_result(img, game_result, animation_time, hovered_button=None):
+    """Drop the final result panel down from above and keep its action buttons active."""
+    if not game_result or animation_time < game_result['started_at']:
+        return
+    elapsed = animation_time - game_result['started_at']
+    progress = min(1.0, elapsed / 1.05)
+    eased = 1.0 - (1.0 - progress) ** 3
+    offset_y = int(-760 * (1.0 - eased))
+
+    def dim_background(overlay):
+        cv2.rectangle(overlay, (0, 0), (WINDOW_WIDTH, WINDOW_HEIGHT), (30, 30, 30), -1)
+
+    _blend_overlay(img, dim_background, 0.34 * eased)
+
+    card_top, card_bottom = 205 + offset_y, 685 + offset_y
+    shadow = img.copy()
+    draw_rounded_rect(shadow, (66, card_top + 7), (444, card_bottom + 7),
+                      (90, 90, 90), radius=18, thickness=-1)
+    cv2.addWeighted(shadow, 0.24 * eased, img, 1.0 - 0.24 * eased, 0, img)
+    draw_rounded_rect(img, (60, card_top), (440, card_bottom), (250, 250, 250),
+                      radius=18, thickness=-1)
+    draw_rounded_rect(img, (60, card_top), (440, card_bottom), BOLD_BORDER_COLOR,
+                      radius=18, thickness=3)
+
+    winner_text = game_result['winner_text']
+    (tw, th), _ = cv2.getTextSize(winner_text, cv2.FONT_HERSHEY_DUPLEX, 1.45, 3)
+    cv2.putText(img, winner_text, ((WINDOW_WIDTH - tw) // 2, 330 + offset_y),
+                cv2.FONT_HERSHEY_DUPLEX, 1.45, TEXT_MAIN, 3, cv2.LINE_AA)
+
+    score_text = f"{game_result['score_p1']}  :  {game_result['score_p2']}"
+    (sw, _), _ = cv2.getTextSize(score_text, cv2.FONT_HERSHEY_DUPLEX, 0.75, 2)
+    cv2.putText(img, score_text, ((WINDOW_WIDTH - sw) // 2, 405 + offset_y),
+                cv2.FONT_HERSHEY_DUPLEX, 0.75, TEXT_MUTED, 2, cv2.LINE_AA)
+
+    for action, rect, label in (
+        ('restart', RESTART_BUTTON_RECT, 'RESTART'),
+        ('quit', QUIT_BUTTON_RECT, 'EXIT'),
+    ):
+        x1, y1, x2, y2 = rect
+        y1, y2 = y1 + offset_y, y2 + offset_y
+        fill = HOVER_BUTTON_BG if hovered_button == action and progress >= 1.0 else CARD_BG
+        draw_rounded_rect(img, (x1, y1), (x2, y2), fill, radius=10, thickness=-1)
+        draw_rounded_rect(img, (x1, y1), (x2, y2), BOLD_BORDER_COLOR, radius=10, thickness=2)
+        (bw, bh), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_DUPLEX, 0.68, 2)
+        baseline = y1 + ((y2 - y1) + bh) // 2
+        cv2.putText(img, label, (x1 + ((x2 - x1) - bw) // 2, baseline),
+                    cv2.FONT_HERSHEY_DUPLEX, 0.68, TEXT_MAIN, 2, cv2.LINE_AA)
+
+
 def create_full_ui(frame, current_dice_values, scores_p1, scores_p2, current_turn=7, active_player=2,
-                   committed_scores_p1=None, committed_scores_p2=None, hovered_button=None):
+                   committed_scores_p1=None, committed_scores_p2=None, hovered_button=None,
+                   score_totals_p1=None, score_totals_p2=None, effects=None,
+                   animation_time=None, game_result=None, game_over_hovered=None):
     # --- 1. 상단 웹캠 영역 ---
     cam_zone = np.zeros((CAM_HEIGHT, WINDOW_WIDTH, 3), dtype=np.uint8)
     if frame is not None:
@@ -233,12 +502,22 @@ def create_full_ui(frame, current_dice_values, scores_p1, scores_p2, current_tur
     categories = SCORING_CATEGORIES
     committed_scores_p1 = {} if committed_scores_p1 is None else committed_scores_p1
     committed_scores_p2 = {} if committed_scores_p2 is None else committed_scores_p2
-    upper_total_p1 = sum(committed_scores_p1.get(key, 0) for key in UPPER_SCORING_KEYS)
-    upper_total_p2 = sum(committed_scores_p2.get(key, 0) for key in UPPER_SCORING_KEYS)
-    bonus_p1 = 35 if upper_total_p1 >= 63 else 0
-    bonus_p2 = 35 if upper_total_p2 >= 63 else 0
-    grand_total_p1 = sum(committed_scores_p1.values()) + bonus_p1
-    grand_total_p2 = sum(committed_scores_p2.values()) + bonus_p2
+    if score_totals_p1 is None:
+        upper_total_p1 = sum(committed_scores_p1.get(key, 0) for key in UPPER_SCORING_KEYS)
+        bonus_p1 = 35 if upper_total_p1 >= 63 else 0
+        grand_total_p1 = sum(committed_scores_p1.values()) + bonus_p1
+    else:
+        upper_total_p1 = score_totals_p1['upper_total']
+        bonus_p1 = score_totals_p1['upper_bonus']
+        grand_total_p1 = score_totals_p1['grand_total']
+    if score_totals_p2 is None:
+        upper_total_p2 = sum(committed_scores_p2.get(key, 0) for key in UPPER_SCORING_KEYS)
+        bonus_p2 = 35 if upper_total_p2 >= 63 else 0
+        grand_total_p2 = sum(committed_scores_p2.values()) + bonus_p2
+    else:
+        upper_total_p2 = score_totals_p2['upper_total']
+        bonus_p2 = score_totals_p2['upper_bonus']
+        grand_total_p2 = score_totals_p2['grand_total']
     
     y_pos = header_line_y
     for i, item in enumerate(categories):
@@ -249,7 +528,7 @@ def create_full_ui(frame, current_dice_values, scores_p1, scores_p2, current_tur
         text_y = row_y_start + 22
         
         if label == "Subtotal":
-            cv2.rectangle(score_zone, (cat_col_x + 1, row_y_start), (bx2 - 1, row_y_start + row_h), SPECIAL_ROW_BG, -1)
+            cv2.rectangle(score_zone, (cat_col_x + 1, row_y_start), (bx2 - 1, row_y_start + row_h), CASINO_SPECIAL_BG, -1)
             sub1, sub2 = f"{upper_total_p1}/63", f"{upper_total_p2}/63"
             (w1,_),_ = cv2.getTextSize(sub1, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
             (w2,_),_ = cv2.getTextSize(sub2, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
@@ -259,7 +538,7 @@ def create_full_ui(frame, current_dice_values, scores_p1, scores_p2, current_tur
             cv2.putText(score_zone, sub1, (p1_x + (col_width - w1) // 2, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, TEXT_MAIN, 1)
             cv2.putText(score_zone, sub2, (p2_x + (col_width - w2) // 2, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, TEXT_MAIN, 1)
         elif label == "+35 Bonus":
-            cv2.rectangle(score_zone, (cat_col_x + 1, row_y_start), (bx2 - 1, row_y_start + row_h), SPECIAL_ROW_BG, -1)
+            cv2.rectangle(score_zone, (cat_col_x + 1, row_y_start), (bx2 - 1, row_y_start + row_h), CASINO_SPECIAL_BG, -1)
             for dash_x in range(cat_col_x + 8, bx2 - 5, 8):
                 cv2.line(score_zone, (dash_x, row_y_start), (min(dash_x + 3, bx2 - 2), row_y_start), CARD_BG, 1)
             bonus1 = "35" if bonus_p1 else ""
@@ -272,7 +551,7 @@ def create_full_ui(frame, current_dice_values, scores_p1, scores_p2, current_tur
             cv2.putText(score_zone, bonus2, (p2_x + (col_width - w2) // 2, text_y), cv2.FONT_HERSHEY_DUPLEX, 0.55, TEXT_MAIN, 1)
         elif label == "Total":
             total_bottom = row_y_start + total_row_h
-            cv2.rectangle(score_zone, (cat_col_x + 1, row_y_start), (bx2 - 1, total_bottom), SPECIAL_ROW_BG, -1)
+            cv2.rectangle(score_zone, (cat_col_x + 1, row_y_start), (bx2 - 1, total_bottom), CASINO_SPECIAL_BG, -1)
             total_h = total_bottom - row_y_start
             t1, t2 = str(grand_total_p1), str(grand_total_p2)
             (w1,_),_ = cv2.getTextSize(t1, cv2.FONT_HERSHEY_DUPLEX, 0.8, 2); (w2,_),_ = cv2.getTextSize(t2, cv2.FONT_HERSHEY_DUPLEX, 0.8, 2)
@@ -321,4 +600,7 @@ def create_full_ui(frame, current_dice_values, scores_p1, scores_p2, current_tur
     cv2.rectangle(score_zone, (bx1, by1), (bx2, by2), BOLD_BORDER_COLOR, 3)
 
     full_screen = np.vstack((cam_zone, dice_zone, score_zone))
+    animation_time = time.monotonic() if animation_time is None else animation_time
+    draw_effects(full_screen, effects, animation_time, active_player)
+    draw_game_result(full_screen, game_result, animation_time, game_over_hovered)
     return full_screen

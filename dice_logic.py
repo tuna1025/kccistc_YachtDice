@@ -52,7 +52,7 @@ def calculate_scores(dice: list[int]) -> dict[str, int]:
         "fives": counts[5] * 5,
         "sixes": counts[6] * 6,
         "choice": total,
-        "four_of_a_kind": total if max(counts.values()) >= 4 else 0,
+        "four_of_a_kind": 30 if max(counts.values()) >= 4 else 0,
         "full_house": 0,
         "small_straight": 0,
         "large_straight": 0,
@@ -62,7 +62,7 @@ def calculate_scores(dice: list[int]) -> dict[str, int]:
     # 3개+2개 또는 같은 눈 5개를 풀하우스로 인정한다.
     count_values = list(counts.values())
     if (3 in count_values and 2 in count_values) or 5 in count_values:
-        scores["full_house"] = total
+        scores["full_house"] = 30
 
     # 중복은 무시하고 연속된 숫자만 검사한다.
     small_patterns = ({1, 2, 3, 4}, {2, 3, 4, 5}, {3, 4, 5, 6})
