@@ -22,7 +22,8 @@ from ultralytics import YOLO
 
 PROJECT_DIR = Path(__file__).resolve().parent
 # 학습이 끝난 뒤 생성되는 최고 성능 모델 가중치 파일
-DEFAULT_WEIGHTS = PROJECT_DIR / "runs" / "dice_yolo11" / "weights" / "best.pt"
+# Git에 공유하는 최종 모델의 기본 경로
+DEFAULT_WEIGHTS = PROJECT_DIR / "models" / "best.pt"
 
 
 class DiceRecognizer:

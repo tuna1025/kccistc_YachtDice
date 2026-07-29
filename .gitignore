@@ -7,6 +7,9 @@ dataset_splits/
 runs/
 wandb/
 *.pt
+# 팀원과 공유할 최종 모델은 예외적으로 Git에 포함한다.
+!models/
+!models/best.pt
 *.onnx
 *.engine
 
