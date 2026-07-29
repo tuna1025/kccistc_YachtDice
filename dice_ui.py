@@ -78,16 +78,21 @@ def draw_dice(img, number, x, y, size=60):
     """모던하고 깔끔한 디자인의 주사위를 그립니다."""
     
     if size > 25: # 큰 주사위에만 그림자 적용
-        shadow_offset = 4
+        shadow_offset = 5
         cv2.rectangle(img, (x + shadow_offset, y + shadow_offset),
-                      (x + size + shadow_offset, y + size + shadow_offset), SHADOW_COLOR, -1)
+                      (x + size + shadow_offset, y + size + shadow_offset), (185, 190, 198), -1)
     
-    cv2.rectangle(img, (x, y), (x + size, y + size), CARD_BG, -1)
-    cv2.rectangle(img, (x, y), (x + size, y + size), (200, 200, 200), 1)
+    is_compact = size <= 25
+    dice_bg = (20, 20, 20) if is_compact else (76, 54, 37)
+    border_color = (5, 5, 5) if is_compact else (45, 32, 23)
+    cv2.rectangle(img, (x, y), (x + size, y + size), dice_bg, -1)
+    cv2.rectangle(img, (x, y), (x + size, y + size), border_color, 2 if not is_compact else 1)
+    if not is_compact:
+        cv2.line(img, (x + 3, y + 3), (x + size - 3, y + 3), (120, 95, 70), 1)
 
-    dot_r = size // 11
+    dot_r = max(3, size // 9)
     cx, cy = x + size // 2, y + size // 2
-    dot_color = (40, 40, 40)
+    dot_color = (255, 255, 255)
     
     positions = {
         1: [(cx, cy)], 2: [(x + size//4, y + size//4), (x + 3*size//4, y + 3*size//4)],
@@ -99,6 +104,41 @@ def draw_dice(img, number, x, y, size=60):
     if number in positions:
         for pos in positions[number]:
             cv2.circle(img, pos, dot_r, dot_color, -1)
+
+
+def draw_category_icon(img, category, x, y):
+    """Draw the free-standing black square patterns used by the score sheet."""
+    # Each black square's width and height in pixels. Increase/decrease for larger/smaller icons.
+    pip_size = 5
+
+    # (x, y) positions of each black square, measured from this icon's top-left corner.
+    # Adjust individual numbers here to fine-tune one category's square arrangement.
+    patterns = {
+        'choice': [(3, 0), (16, 0), (10, 6), (3, 12), (16, 12)],
+        'four_of_a_kind': [(3, 0), (16, 0), (3, 12), (16, 12)],
+        'full_house': [(5, 0), (14, 0), (0, 10), (10, 10), (19, 10)],
+        'small_straight': [(0, 0), (6, 7), (13, 13), (19, 19)],
+        'large_straight': [(0, 0), (19, 0), (3, 10), (16, 10), (10, 20)],
+        'yacht': [(10, 0), (0, 10), (19, 10), (4, 20), (16, 20)],
+    }
+
+    # Per-category position adjustment: (x_offset, y_offset).
+    # Increase x to move only that icon right; increase y to move only that icon down.
+    # Example: 'small_straight': (0, 3) moves only S. Straight down 3 pixels.
+    category_offsets = {
+        'choice': (0, 4),
+        'four_of_a_kind': (0, 3),
+        'full_house': (0, 5),
+        'small_straight': (0, 0),
+        'large_straight': (0, 0),
+        'yacht': (0, 0),
+    }
+    icon_offset_x, icon_offset_y = category_offsets.get(category, (0, 0))
+
+    for px, py in patterns.get(category, []):
+        cv2.rectangle(img, (x + icon_offset_x + px, y + icon_offset_y + py),
+                      (x + icon_offset_x + px + pip_size - 1,
+                       y + icon_offset_y + py + pip_size - 1), TEXT_MAIN, -1)
 
 
 def create_full_ui(frame, current_dice_values, scores_p1, scores_p2, current_turn=7, active_player=2):
@@ -126,7 +166,12 @@ def create_full_ui(frame, current_dice_values, scores_p1, scores_p2, current_tur
 
     # --- 3. 하단 점수판 영역 ---
     score_zone = np.full((SCORE_BOARD_HEIGHT, WINDOW_WIDTH, 3), BG_COLOR, dtype=np.uint8)
-    bx1, by1, bx2, by2 = 15, 15, WINDOW_WIDTH - 15, SCORE_BOARD_HEIGHT - 20
+    # Height of a normal score row. Changing this affects every table row.
+    row_h = 30
+    total_row_h = row_h * 2
+    # 14 normal rows precede Total; keep its full two-row height inside the panel.
+    bx1, by1, bx2 = 15, 15, WINDOW_WIDTH - 15
+    by2 = by1 + 55 + (14 * row_h) + total_row_h
     
     cv2.rectangle(score_zone, (bx1 + 5, by1 + 5), (bx2 + 5, by2 + 5), SHADOW_COLOR, -1)
     cv2.rectangle(score_zone, (bx1, by1), (bx2, by2), CARD_BG, -1)
@@ -148,17 +193,18 @@ def create_full_ui(frame, current_dice_values, scores_p1, scores_p2, current_tur
     categories = [
         ("Aces", 'ones'), ("Deuces", 'twos'), ("Threes", 'threes'),
         ("Fours", 'fours'), ("Fives", 'fives'), ("Sixes", 'sixes'),
-        ("Subtotal", 'upper_total', True), ("Choice", 'choice'), 
+        ("Subtotal", 'upper_total', True), ("+35 Bonus", 'bonus', True), ("Choice", 'choice'),
         ("4 of a Kind", 'four_of_a_kind'), ("Full House", 'full_house'),
         ("S. Straight", 'small_straight'), ("L. Straight", 'large_straight'), 
         ("Yacht", 'yacht'), ("Total", 'grand_total', True)
     ]
     
-    y_pos, row_h = header_line_y, 32
+    y_pos = header_line_y
     for i, item in enumerate(categories):
         is_special = len(item) == 3; label, key = item[0], item[1]
         
-        row_y_start = y_pos
+        row_y_start = y_pos  # Top edge of the current score row.
+        # Text baseline within a normal row: increase to move row text down, decrease to move it up.
         text_y = row_y_start + 22
         
         if label == "Subtotal":
@@ -167,24 +213,45 @@ def create_full_ui(frame, current_dice_values, scores_p1, scores_p2, current_tur
             (w1,_),_ = cv2.getTextSize(sub1, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
             (w2,_),_ = cv2.getTextSize(sub2, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
             
-            cv2.putText(score_zone, "Subtotal", (cat_col_x + 20, text_y), cv2.FONT_HERSHEY_DUPLEX, 0.55, TEXT_MAIN, 1)
+            (label_w,_),_ = cv2.getTextSize("Subtotal", cv2.FONT_HERSHEY_DUPLEX, 0.55, 1)
+            cv2.putText(score_zone, "Subtotal", (cat_col_x + (col_width - label_w) // 2, text_y), cv2.FONT_HERSHEY_DUPLEX, 0.55, TEXT_MAIN, 1)
             cv2.putText(score_zone, sub1, (p1_x + (col_width - w1) // 2, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, TEXT_MAIN, 1)
             cv2.putText(score_zone, sub2, (p2_x + (col_width - w2) // 2, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, TEXT_MAIN, 1)
+        elif label == "+35 Bonus":
+            cv2.rectangle(score_zone, (cat_col_x + 1, row_y_start), (bx2 - 1, row_y_start + row_h), SPECIAL_ROW_BG, -1)
+            for dash_x in range(cat_col_x + 8, bx2 - 5, 8):
+                cv2.line(score_zone, (dash_x, row_y_start), (min(dash_x + 3, bx2 - 2), row_y_start), CARD_BG, 1)
+            bonus1 = "35" if scores_p1.get('upper_total', 0) >= 63 else ""
+            bonus2 = "35" if scores_p2.get('upper_total', 0) >= 63 else ""
+            (label_w,_),_ = cv2.getTextSize("+35 Bonus", cv2.FONT_HERSHEY_DUPLEX, 0.55, 1)
+            (w1,_),_ = cv2.getTextSize(bonus1, cv2.FONT_HERSHEY_DUPLEX, 0.55, 1)
+            (w2,_),_ = cv2.getTextSize(bonus2, cv2.FONT_HERSHEY_DUPLEX, 0.55, 1)
+            cv2.putText(score_zone, "+35 Bonus", (cat_col_x + (col_width - label_w) // 2, text_y), cv2.FONT_HERSHEY_DUPLEX, 0.55, TEXT_MAIN, 1)
+            cv2.putText(score_zone, bonus1, (p1_x + (col_width - w1) // 2, text_y), cv2.FONT_HERSHEY_DUPLEX, 0.55, TEXT_MAIN, 1)
+            cv2.putText(score_zone, bonus2, (p2_x + (col_width - w2) // 2, text_y), cv2.FONT_HERSHEY_DUPLEX, 0.55, TEXT_MAIN, 1)
         elif label == "Total":
-            cv2.rectangle(score_zone, (cat_col_x + 1, row_y_start), (bx2 - 1, by2 - 1), SPECIAL_ROW_BG, -1)
-            total_h = by2 - row_y_start
-            text_y = row_y_start + total_h // 2 + 5
+            total_bottom = row_y_start + total_row_h
+            cv2.rectangle(score_zone, (cat_col_x + 1, row_y_start), (bx2 - 1, total_bottom), SPECIAL_ROW_BG, -1)
+            total_h = total_bottom - row_y_start
             t1, t2 = str(scores_p1.get('grand_total', 0)), str(scores_p2.get('grand_total', 0))
             (w1,_),_ = cv2.getTextSize(t1, cv2.FONT_HERSHEY_DUPLEX, 0.8, 2); (w2,_),_ = cv2.getTextSize(t2, cv2.FONT_HERSHEY_DUPLEX, 0.8, 2)
-            cv2.putText(score_zone, "Total", (cat_col_x + 20, text_y), cv2.FONT_HERSHEY_DUPLEX, 0.8, TEXT_MAIN, 2)
+            (label_w,_),_ = cv2.getTextSize("Total", cv2.FONT_HERSHEY_DUPLEX, 0.8, 2)
+            (_, text_h), _ = cv2.getTextSize("Total", cv2.FONT_HERSHEY_DUPLEX, 0.8, 2)
+            text_y = row_y_start + (total_h + text_h) // 2
+            cv2.putText(score_zone, "Total", (cat_col_x + (col_width - label_w) // 2, text_y), cv2.FONT_HERSHEY_DUPLEX, 0.8, TEXT_MAIN, 2)
             cv2.putText(score_zone, t1, (p1_x + (col_width - w1) // 2, text_y), cv2.FONT_HERSHEY_DUPLEX, 0.8, TEXT_MAIN, 2)
             cv2.putText(score_zone, t2, (p2_x + (col_width - w2) // 2, text_y), cv2.FONT_HERSHEY_DUPLEX, 0.8, TEXT_MAIN, 2)
-            y_pos += row_h; break
+            y_pos = total_bottom; break
         else:
             if i < 6: draw_dice(score_zone, i + 1, cat_col_x + 15, row_y_start + 6, size=20)
+            elif key in {'choice', 'four_of_a_kind', 'full_house', 'small_straight', 'large_straight', 'yacht'}:
+                # Icon origin inside a score row: change +8 for left/right and +3 for up/down.
+                draw_category_icon(score_zone, key, cat_col_x + 8, row_y_start + 3)
             v1, v2 = str(scores_p1.get(key, '')), str(scores_p2.get(key, ''))
             (w1,_),_ = cv2.getTextSize(v1, cv2.FONT_HERSHEY_DUPLEX, 0.55, 1);(w2,_),_ = cv2.getTextSize(v2, cv2.FONT_HERSHEY_DUPLEX, 0.55, 2 if active_player==2 else 1)
-            cv2.putText(score_zone, label, (cat_col_x + 45, text_y), cv2.FONT_HERSHEY_DUPLEX, 0.55, TEXT_MAIN, 1)
+            # Label's left edge: adjust these values to change the spacing after each icon.
+            label_x = cat_col_x + (40 if i >= 8 else 45)
+            cv2.putText(score_zone, label, (label_x, text_y), cv2.FONT_HERSHEY_DUPLEX, 0.55, TEXT_MAIN, 1)
             cv2.putText(score_zone, v1, (p1_x + (col_width - w1) // 2, text_y), cv2.FONT_HERSHEY_DUPLEX, 0.55, TEXT_MUTED if v1 == '' else TEXT_MAIN, 1)
             cv2.putText(score_zone, v2, (p2_x + (col_width - w2) // 2, text_y), cv2.FONT_HERSHEY_DUPLEX, 0.55, TEXT_MUTED if v2 == '' else TEXT_MAIN, 2 if active_player == 2 else 1)
         
@@ -192,7 +259,7 @@ def create_full_ui(frame, current_dice_values, scores_p1, scores_p2, current_tur
         line_color = BOLD_BORDER_COLOR if is_special else GRID_LINE_COLOR
         cv2.line(score_zone, (bx1 + 1, y_pos), (bx2 - 1, y_pos), line_color, 2 if is_special else 1)
     
-    final_y = min(y_pos, by2)
+    final_y = by2
     cv2.line(score_zone, (p1_x, by1), (p1_x, final_y), BOLD_BORDER_COLOR, 2)
     cv2.line(score_zone, (p2_x, by1), (p2_x, final_y), BOLD_BORDER_COLOR, 2)
 
