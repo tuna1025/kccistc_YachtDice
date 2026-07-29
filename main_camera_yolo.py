@@ -40,10 +40,12 @@ def turn_scores(dice_values: list[int] | None) -> dict[str, int]:
         return empty_scores()
 
     scores = calculate_scores(dice_values)
-    # 기존 UI가 요구하는 Subtotal/Total 키를 테스트 화면에 맞춰 추가한다.
-    scores["upper_total"] = sum(scores[category] for category in UPPER_CATEGORIES)
+    # 현재 값은 아직 점수표에 확정하지 않은 '후보'다.
+    # 따라서 카테고리 행에는 후보 점수를 보여 주되, Subtotal/Total에는 합산하지 않는다.
+    # 실제 게임에서 사용자가 카테고리를 선택했을 때만 별도 점수표에 기록해 합산한다.
+    scores["upper_total"] = 0
     scores["upper_bonus"] = 0
-    scores["grand_total"] = scores["upper_total"] + sum(scores[category] for category in LOWER_CATEGORIES)
+    scores["grand_total"] = 0
     return scores
 
 
