@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter, deque
 import time
 
 import cv2
@@ -11,6 +12,19 @@ from dice_inference import DiceRecognizer
 
 WINDOW_NAME = "Yacht Dice Game"
 CLEAR_FRAMES_REQUIRED = 5
+# 최근 10개 인식 결과 중 같은 주사위 리스트가 7번 이상 나오면 확정한다.
+VOTE_WINDOW_SIZE = 10
+VOTES_REQUIRED = 7
+def add_detection_vote(
+    vote_history: deque[tuple[int, ...]],
+    detected_values: list[int],
+) -> tuple[list[int] | None, int]:
+    """인식 결과를 투표에 추가하고 안정된 주사위 리스트와 최다 득표수를 반환한다."""
+    vote_history.append(tuple(detected_values))
+    most_common_values, vote_count = Counter(vote_history).most_common(1)[0]
+    if vote_count >= VOTES_REQUIRED:
+        return list(most_common_values), vote_count
+    return None, vote_count
 
 
 def score_totals(committed_scores: dict[str, int]) -> dict[str, int]:
@@ -32,6 +46,9 @@ def main() -> None:
     if not camera.isOpened():
         raise RuntimeError("Camera 0 could not be opened.")
 
+    # 플레이어가 바뀌거나 점수를 확정하면 비워지는 최근 인식 결과 목록이다.
+    vote_history: deque[tuple[int, ...]] = deque(maxlen=VOTE_WINDOW_SIZE)
+
     state = {
         "active_player": 1,
         "committed_scores": {1: {}, 2: {}},
@@ -45,6 +62,7 @@ def main() -> None:
         "game_result": None,
         "game_over_hovered": None,
         "quit_requested": False,
+        "vote_count": 0,
     }
 
     def is_available(button) -> bool:
@@ -70,6 +88,7 @@ def main() -> None:
             elif event == cv2.EVENT_LBUTTONUP and action == "quit":
                 state["quit_requested"] = True
             elif event == cv2.EVENT_LBUTTONUP and action == "restart":
+                vote_history.clear()
                 state.update({
                     "active_player": 1,
                     "committed_scores": {1: {}, 2: {}},
@@ -82,6 +101,7 @@ def main() -> None:
                     "effects": [],
                     "game_result": None,
                     "game_over_hovered": None,
+                    "vote_count": 0,
                 })
             return
 
@@ -110,6 +130,8 @@ def main() -> None:
         state["candidate_scores"][player] = {}
         state["dice_values"] = None
         state["hovered_button"] = None
+        state["vote_count"] = 0
+        vote_history.clear()
 
         if all(len(state["committed_scores"][p]) == len(dice_ui.SCORING_KEYS) for p in (1, 2)):
             state["game_over"] = True
@@ -158,6 +180,9 @@ def main() -> None:
             detected_values = None if state["game_over"] else recognizer.predict(frame)
 
             if state["awaiting_clear"]:
+                # 이전 플레이어의 주사위는 다음 플레이어 투표에 포함하지 않는다.
+                vote_history.clear()
+                state["vote_count"] = 0
                 if detected_values is None:
                     state["clear_frames"] += 1
                 else:
@@ -167,9 +192,13 @@ def main() -> None:
                     state["awaiting_clear"] = False
                     state["clear_frames"] = 0
             elif not state["game_over"] and detected_values is not None:
-                active_player = state["active_player"]
-                state["dice_values"] = detected_values
-                state["candidate_scores"][active_player] = dice_logic.calculate_scores(detected_values)
+                # 한 프레임의 결과를 바로 쓰지 않고 최근 결과의 다수결로 안정화한다.
+                stable_values, vote_count = add_detection_vote(vote_history, detected_values)
+                state["vote_count"] = vote_count
+                if stable_values is not None and stable_values != state["dice_values"]:
+                    active_player = state["active_player"]
+                    state["dice_values"] = stable_values
+                    state["candidate_scores"][active_player] = dice_logic.calculate_scores(stable_values)
 
             committed_p1 = state["committed_scores"][1]
             committed_p2 = state["committed_scores"][2]
@@ -205,7 +234,10 @@ def main() -> None:
             elif state["awaiting_clear"]:
                 status = f"Player {state['active_player']}: remove the previous dice"
             elif state["dice_values"] is None:
-                status = f"Player {state['active_player']}: detecting 5 dice..."
+                status = (
+                    f"Player {state['active_player']}: stabilizing "
+                    f"{state['vote_count']}/{VOTES_REQUIRED}"
+                )
             else:
                 status = f"Player {state['active_player']} dice: {state['dice_values']}"
             cv2.putText(ui_screen, status, (15, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 0), 2)
