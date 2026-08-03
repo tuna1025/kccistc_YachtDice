@@ -1,11 +1,15 @@
 # Roboflow dataset files (images and YOLO labels)
 Dice.v2-medium-color.yolov11/export/
+yolo-dice.v9i.yolov11/
 
 # Files generated when preparing and training the model
 dataset_splits/
 runs/
 wandb/
 *.pt
+# 팀원과 공유할 최종 모델은 예외적으로 Git에 포함한다.
+!models/
+!models/best.pt
 *.onnx
 *.engine
 
@@ -13,3 +17,7 @@ wandb/
 __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
+
+# 참고용 이미지, 텍스트
+*.png
+*.txt
