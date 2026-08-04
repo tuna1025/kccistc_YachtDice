@@ -18,6 +18,14 @@ __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
 
+# Codex가 문서 확인 등에 사용하는 임시 파일
+.codex_tmp/
+
+# PyInstaller 빌드 결과물
+build/
+dist/
+*.spec
+
 # 참고용 이미지, 텍스트
 *.png
 *.txt
