@@ -2,8 +2,8 @@
 
 **YOLO11s와 웹캠을 활용한 실시간 주사위 인식 요트 다이스 게임**
 
-[![프로젝트 시연 영상](https://img.youtube.com/vi/oDf_O-nPHRc/0.jpg)](https://www.youtube.com/shorts/oDf_O-nPHRc)
-이미지를 클릭하면 시연 영상으로 이동합니다.
+[![프로젝트 시연 영상](https://img.youtube.com/vi/oDf_O-nPHRc/0.jpg)](https://www.youtube.com/shorts/oDf_O-nPHRc)<br>
+이미지를 클릭하면 시연 영상으로 이동합니다.<br>
 <img src="https://github.com/user-attachments/assets/25a3a0c8-24fc-466c-8ed1-ea4e27cbec75" width="220">
 <img src="https://github.com/user-attachments/assets/2eb59610-ee83-4056-aa44-497724f55ffc" width="500">
 
